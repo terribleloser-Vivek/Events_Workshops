@@ -1,0 +1,186 @@
+Project info 
+Project name :  CodeVipasana1
+Project number : 43391247894 
+Project ID : codevipasana1-414818
+
+Vivekkumarcs123
+
+API : DUET AI | CLOUD FUNCTION | CLOUD RUN | BIGQUERY
+
+
+1. Activate Cloud Shell
+----------------------------------------------------
+vivekkumarcs123@cloudshell:~ (codevipasana1-414818)$ gcloud auth list
+Credentialed Accounts
+
+ACTIVE: *
+ACCOUNT: vivekkumarcs123@gmail.com
+
+To set the active account, run:
+    $ gcloud config set account `ACCOUNT`
+
+vivekkumarcs123@cloudshell:~ (codevipasana1-414818)$ gcloud config list project
+[core]
+project = codevipasana1-414818
+
+vivekkumarcs123@cloudshell:~ (codevipasana1-414818)$ gcloud config set project codevipasana1-414818
+Updated property [core/project].
+
+
+2. Enabling Duet AI and necessary APIs
+----------------------------------------------------
+vivekkumarcs123@cloudshell:~ (codevipasana1-414818)$ gcloud services enable cloudaicompanion.googleapis.com 
+
+vivekkumarcs123@cloudshell:~ (codevipasana1-414818)$ gcloud services enable cloudfunctions.googleapis.com
+Operation "operations/acf.p2-43391247894-0dd5755a-8bf3-4b3c-b255-9f89ea33e092" finished successfully.
+
+vivekkumarcs123@cloudshell:~ (codevipasana1-414818)$ gcloud services enable run.googleapis.com
+Operation "operations/acf.p2-43391247894-fad6d24f-b3f4-4b22-b211-188326b7b9dc" finished successfully.
+
+vivekkumarcs123@cloudshell:~ (codevipasana1-414818)$ gcloud services enable cloudbuild.googleapis.com
+Operation "operations/acf.p2-43391247894-663b9c74-5fbd-46fb-afe1-0df07f9d579d" finished successfully.
+
+3. Cloud Function, Gemini Api
+----------------------------------------------------
+
+Add dependencies -- Maven Vertex Ai dependencies
+
+ <dependency>
+      <groupId>com.google.cloud</groupId>
+      <artifactId>google-cloud-vertexai</artifactId>
+      <version>0.1.0</version>
+ </dependency>
+
+<dependency>
+      <groupId>com.google.code.gson</groupId>
+      <artifactId>gson</artifactId>
+      <version>2.10</version>
+</dependency>
+
+Modify the function entry point and class name
+
+4. Create method that call Gemini Pro
+----------------------------------------------------
+package cloudcode.bookshelf;
+import java.io.BufferedWriter;
+import com.google.cloud.functions.HttpFunction;
+import com.google.cloud.functions.HttpRequest;
+import com.google.cloud.functions.HttpResponse;
+import com.google.cloud.vertexai.VertexAI;
+import com.google.cloud.vertexai.api.GenerateContentResponse;
+import com.google.cloud.vertexai.api.GenerationConfig;
+import com.google.cloud.vertexai.generativeai.preview.GenerativeModel;
+import com.google.cloud.vertexai.generativeai.preview.ResponseHandler;
+import java.io.IOException;
+import java.util.List;
+import java.util.Arrays;
+import java.util.Map;
+import java.util.LinkedHashMap;
+import com.google.gson.Gson;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonArray;
+
+public class Bookshelf implements HttpFunction {
+  private static final Gson gson = new Gson();
+
+ @Override
+  public void service(HttpRequest request, HttpResponse response) throws Exception {
+    BufferedWriter writer = response.getWriter();
+
+ // Get the request body as a JSON object.
+ JsonObject requestJson = new Gson().fromJson(request.getReader(), JsonObject.class);
+ JsonArray calls_array = requestJson.getAsJsonArray("calls");
+ JsonArray calls = (JsonArray) calls_array.get(0);
+ String context = calls.get(0).toString().replace("\"", "");
+
+ //Invoke Gemini model
+  String raw_result = callGemini(context);
+  raw_result = raw_result.replace("\n","");
+  String trimmed = raw_result.trim();
+  List<String> result_list = Arrays.asList(trimmed);
+  Map<String, List<String>> stringMap = new LinkedHashMap<>();
+  stringMap.put("replies", result_list);
+ 
+  // Serialization
+  String return_value = gson.toJson(stringMap);
+  writer.write(return_value);
+    }
+  public String callGemini(String context) throws IOException{
+      String res = "";
+        try (VertexAI vertexAi = new VertexAI("REPLACE_WITH_YOUR_PROJECT_ID", "us-central1"); ) {
+          GenerationConfig generationConfig =
+              GenerationConfig.newBuilder()
+                  .setMaxOutputTokens(2048)
+                  .setTemperature(0.4F)
+                  .setTopK(32)
+                  .setTopP(1)
+                  .build();  
+        GenerativeModel model = new GenerativeModel("gemini-pro", generationConfig, vertexAi);
+        GenerateContentResponse response = model.generateContent(context);
+        res = ResponseHandler.getText(response);
+      }catch(Exception e){
+        System.out.println(e);
+        }
+        return res;
+    }
+}
+
+This class expects input in the JSON structure as below:
+{ "calls": [["YOUR_PROMPT_HERE"]] }
+
+It returns a response as below:
+(Json) Map<String, List<String>> {"replies": ["response"]}
+
+5. Deploy the Cloud Function
+----------------------------------------------------
+vivekkumarcs123@cloudshell:~ (codevipasana1-414818)$ cd duetai-gemini-calling
+vivekkumarcs123@cloudshell:~/duetai-gemini-calling (codevipasana1-414818)$ pwd
+/home/vivekkumarcs123/duetai-gemini-calling
+trvekkumarcs123@cloudshell:~/duetai-gemini-calling (codevipasana1-414818)$ ls -l 
+total 20
+-rw-r--r-- 1 vivekkumarcs123 vivekkumarcs123 5134 Feb 16 06:06 README.md
+drwxr-xr-x 3 vivekkumarcs123 vivekkumarcs123 4096 Feb 16 06:06 src
+drwxr-xr-x 4 vivekkumarcs123 vivekkumarcs123 4096 Feb 16 06:06 target
+-rw-r--r-- 1 vivekkumarcs123 vivekkumarcs123 1519 Feb 16 06:16 pom.xml
+
+vivekkumarcs123@cloudshell:~/duetai-gemini-calling (codevipasana1-414818)$ gcloud functions deploy bookshelf --runtime java17 --trigger-http --entry-point cloudcode.bookshelf.Bookshelf
+Allow unauthenticated invocations of new function [bookshelf]? (y/N)?  y
+
+Deploying function (may take a while - up to 2 minutes)...working...                                                                                                                           
+For Cloud Build Logs, visit: https://console.cloud.google.com/cloud-build/builds;region=us-central1/2389ea3f-7826-40b2-ae63-652ea6ce0af6?project=43391247894
+Deploying function (may take a while - up to 2 minutes)...done.                                                                                                                                
+automaticUpdatePolicy: {}
+availableMemoryMb: 256
+buildId: 2389ea3f-7826-40b2-ae63-652ea6ce0af6
+buildName: projects/43391247894/locations/us-central1/builds/2389ea3f-7826-40b2-ae63-652ea6ce0af6
+dockerRegistry: ARTIFACT_REGISTRY
+entryPoint: cloudcode.bookshelf.Bookshelf
+httpsTrigger:
+  securityLevel: SECURE_ALWAYS
+  url: https://us-central1-codevipasana1-414818.cloudfunctions.net/bookshelf
+ingressSettings: ALLOW_ALL
+labels:
+  deployment-tool: cli-gcloud
+name: projects/codevipasana1-414818/locations/us-central1/functions/bookshelf
+runtime: java17
+serviceAccountEmail: codevipasana1-414818@appspot.gserviceaccount.com
+sourceUploadUrl: https://storage.googleapis.com/uploads-914323517797.us-central1.cloudfunctions.appspot.com/b3d97af4-81ee-4cfe-befe-24a8cad6dbc8.zip
+status: ACTIVE
+timeout: 60s
+updateTime: '2024-02-19T19:12:20.690Z'
+versionId: '1'
+
+It deploy your serverless Cloud Function with the deployed URL: https://us-central1-*******.cloudfunctions.net/bookshelf.
+
+
+gcloud functions call bookshelf –region=us-central1 –gen1 –data ‘{"calls":[["Hello! This is my test prompt."]]}'
+
+
+5.Clean Up Process - Disable all the APIs and Delete Cloud Functions
+----------------------------------------------------
+gcloud services disable run.googleapis.com
+
+gcloud services disable cloudbuild.googleapis.com
+
+gcloud services disable vertexai.googleapis.com
+
